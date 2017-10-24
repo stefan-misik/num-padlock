@@ -2,6 +2,7 @@
 #include "resource.h"
 #include "tray_icon.h"
 #include "about_dialog.h"
+#include "padlocker.h"
 #include "defs.h"
 
 /******************************************************************************/
@@ -15,6 +16,7 @@ typedef struct tagMAINWNDDATA
 {
     HICON hMainIcon;        /** < Main Icon handle */    
     HMENU hTrayIconMenu;    /** < Menu for the tray icon */
+    PADLOCKDATA pd;         /** < Num-padlock data */
 } MAINWNDDATA, *LPMAINWNDDATA;
 
 /* Tray icon notification messages  */
@@ -22,6 +24,9 @@ typedef struct tagMAINWNDDATA
 
 /* ID of the tray icon */
 #define TRAY_ICON_ID 0
+
+/* Padlocker timer ID*/
+#define PADLOCKER_TIMER_ID 20
 
 /* Get Main window data pointer */
 #define GetMainWindowData(hWnd) (LPMAINWNDDATA)(GetWindowLongPtr((hWnd), \
@@ -84,8 +89,54 @@ static LPMAINWNDDATA CreateMainWndData(VOID)
     /* Initialize main window data */
     lpData->hMainIcon = NULL;
     lpData->hTrayIconMenu = NULL;
+    /* Initialize padlocker data */
+    PadlockerInit(&(lpData->pd));
         
     return lpData;
+}
+
+/**
+ * @brief Read current settings from the window
+ * 
+ * @param      hwnd   Window to read the data from
+ * @param[out] lpData Structure to store the settings
+ */
+static VOID ReadFromWnd(
+    HWND hwnd,
+    LPPADLOCKDATA lpData
+)
+{
+    /* Get the Enable check-box status */
+    lpData->bIsEnabled = (BST_CHECKED == IsDlgButtonChecked(hwnd,
+        IDC_ENABLE_PADLOCK));
+    
+    lpData->uPeriod = 500; /* ms */
+    
+    /* Get the desired status of numlock */
+    lpData->bNumLockIsOn = (BST_CHECKED == IsDlgButtonChecked(hwnd,
+        IDC_NUML_ON));
+}
+
+/**
+ * @brief Write new setting to the window
+ * 
+ * @param     hwnd   Window to write to
+ * @param[in] lpData Data to be written
+ */
+static VOID WriteToWnd(
+    HWND hwnd,
+    const LPPADLOCKDATA lpData
+)
+{
+    /* Set the enable button */
+    CheckDlgButton(hwnd, IDC_ENABLE_PADLOCK, lpData->bIsEnabled ? BST_CHECKED :
+        BST_UNCHECKED);
+    
+    /* Set the desired numlock status */
+    CheckDlgButton(hwnd, IDC_NUML_ON, lpData->bNumLockIsOn ? BST_CHECKED :
+        BST_UNCHECKED);
+    CheckDlgButton(hwnd, IDC_NUML_OFF, lpData->bNumLockIsOn ? BST_UNCHECKED :
+        BST_CHECKED);
 }
 
 /******************************************************************************/
@@ -97,7 +148,7 @@ static LPMAINWNDDATA CreateMainWndData(VOID)
  * 
  * @param hwndInitialControl A handle to the control to receive the default
  *        keyboard focus
- * @param lpData Additional initialization data
+ * @param[in] lpData Additional initialization data
  * @return Set the keyboard focus
  */
 static BOOL OnInitDialog(
@@ -117,6 +168,9 @@ static BOOL OnInitDialog(
 
     /* Add tray icon */
     TrayIconAdd(hwnd, TRAY_ICON_ID, WM_TRAY_ICON, lpData->hMainIcon);
+    
+    /* Update dialog controls */
+    WriteToWnd(hwnd, &(lpData->pd));
     
     return TRUE;
 }
@@ -186,8 +240,23 @@ static INT_PTR OnControlCommand(
     HWND hwndC
 )
 {
+    LPMAINWNDDATA lpData = GetMainWindowData(hwnd);
+    
     switch(wControlID)
     {
+        case IDC_ENABLE_PADLOCK:
+        case IDC_NUML_ON:
+        case IDC_NUML_OFF:
+        case IDC_PERIOD:
+            if((BN_CLICKED == wNotifCode && IDC_PERIOD != wControlID) ||
+                (EN_CHANGE == wNotifCode && IDC_PERIOD == wControlID))
+            {  
+                ReadFromWnd(hwnd, &(lpData->pd));
+                
+                PadlockerUpdate(&(lpData->pd), hwnd, PADLOCKER_TIMER_ID);
+                return TRUE;
+            }
+            break;
     case IDOK:
         return TRUE;
     }
@@ -283,6 +352,25 @@ static INT_PTR OnTrayIconNotify(
     return FALSE;
 }
 
+static INT_PTR OnTimer(
+    HWND hwnd,
+    UINT_PTR nIDEvent,
+    TIMERPROC lpTimerFunc
+)
+{
+    LPMAINWNDDATA lpData = GetMainWindowData(hwnd);
+    
+    /* Process padlocker timer */
+    if(PADLOCKER_TIMER_ID == nIDEvent)
+    {
+        PadlockerProcess(&(lpData->pd));
+
+        return TRUE;
+    }
+    
+    return FALSE;
+}
+
 /**
  * @brief Main window dialog procedure
  * 
@@ -318,24 +406,22 @@ static INT_PTR CALLBACK DialogProc(
             return (INT_PTR)OnMenuAccCommand(hwnd, LOWORD(wParam),
                     (HIWORD(wParam) == 0));
         }
-        break;
 
     case WM_SYSCOMMAND:
         return (INT_PTR)OnSysCommand(hwnd, wParam, GET_X_LPARAM(lParam),
             GET_Y_LPARAM(lParam));
-        break;
 
     case WM_CLOSE:
         return (INT_PTR)OnClose(hwnd);
-        break;
 
     case WM_DESTROY:
         return (INT_PTR)OnDestroy(hwnd);
-        break;
 
     case WM_TRAY_ICON:
         return (INT_PTR)OnTrayIconNotify(hwnd, wParam, (UINT)lParam);
-        break;
+
+    case WM_TIMER:
+        return (INT_PTR)OnTimer(hwnd, (UINT_PTR)wParam, (TIMERPROC)lParam);
     }
     
     return FALSE;

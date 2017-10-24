@@ -15,7 +15,7 @@ endif
 
 # Project settings
 PROJ	= num-padlock
-SRC	= main.c main_wnd.c defs.c tray_icon.c about_dialog.c
+SRC	= main.c main_wnd.c defs.c tray_icon.c about_dialog.c padlocker.c
 RES	= resource.rc
 
 # Compile flags

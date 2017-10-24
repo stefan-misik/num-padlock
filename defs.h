@@ -32,12 +32,12 @@
                                     DEFS_STRINGIFY(PROJECT_VER_2) "."     \
                                     DEFS_STRINGIFY(PROJECT_VER_3) "."     \
                                     DEFS_STRINGIFY(PROJECT_VER_4)
-#define PROJECT_NAME            "num-padlock"
+#define PROJECT_NAME            "Num-padlock"
 #define PROJECT_AUTHOR          "Stefan Misik"
 #define PROJECT_DESC            "Keep your numlock key in desired state"
 #define PROJECT_CPYR            "Copyright (C) 2017 " PROJECT_AUTHOR
 
-#define PROJECT_WEB "https://github.com/stefan-misik"
+#define PROJECT_WEB "https://github.com/stefan-misik/num-padlock/releases/latest"
 
 #define PROJECT_MAIL "mail@stefanmisik.eu"
 
