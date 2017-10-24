@@ -96,50 +96,6 @@ static LPMAINWNDDATA CreateMainWndData(VOID)
 }
 
 /**
- * @brief Read current settings from the window
- * 
- * @param      hwnd   Window to read the data from
- * @param[out] lpData Structure to store the settings
- */
-static VOID ReadFromWnd(
-    HWND hwnd,
-    LPPADLOCKDATA lpData
-)
-{
-    /* Get the Enable check-box status */
-    lpData->bIsEnabled = (BST_CHECKED == IsDlgButtonChecked(hwnd,
-        IDC_ENABLE_PADLOCK));
-    
-    lpData->uPeriod = 500; /* ms */
-    
-    /* Get the desired status of numlock */
-    lpData->bNumLockIsOn = (BST_CHECKED == IsDlgButtonChecked(hwnd,
-        IDC_NUML_ON));
-}
-
-/**
- * @brief Write new setting to the window
- * 
- * @param     hwnd   Window to write to
- * @param[in] lpData Data to be written
- */
-static VOID WriteToWnd(
-    HWND hwnd,
-    const LPPADLOCKDATA lpData
-)
-{
-    /* Set the enable button */
-    CheckDlgButton(hwnd, IDC_ENABLE_PADLOCK, lpData->bIsEnabled ? BST_CHECKED :
-        BST_UNCHECKED);
-    
-    /* Set the desired numlock status */
-    CheckDlgButton(hwnd, IDC_NUML_ON, lpData->bNumLockIsOn ? BST_CHECKED :
-        BST_UNCHECKED);
-    CheckDlgButton(hwnd, IDC_NUML_OFF, lpData->bNumLockIsOn ? BST_UNCHECKED :
-        BST_CHECKED);
-}
-
-/**
  * @brief Process 'Run at startup' menu selection
  * 
  * @param hwnd Main window handle
@@ -280,8 +236,9 @@ static BOOL OnInitDialog(
                 MF_UNCHECKED));
     }
     
-    /* Update dialog controls */
-    WriteToWnd(hwnd, &(lpData->pd));
+    /* Enable the Padlocker by default */
+    CheckDlgButton(hwnd, IDC_ENABLE_PADLOCK, BST_CHECKED);
+    PadlockerEnable(&(lpData->pd), TRUE);
     
     return TRUE;
 }
@@ -298,9 +255,8 @@ static INT_PTR OnClose(
 )
 {
     /* Hide the window */
-    /*ShowMainWnd(hwnd, FALSE);*/
-    DestroyWindow(hwnd);
-
+    ShowMainWnd(hwnd, FALSE);
+    
     return TRUE;
 }
 
@@ -315,15 +271,19 @@ static INT_PTR OnDestroy(
     HWND hwnd
 )
 {
-    LPMAINWNDDATA lpData;
-
+    LPMAINWNDDATA lpData = GetMainWindowData(hwnd);
+    
     /* Remove tray icon */
     TrayIconRemove(hwnd, TRAY_ICON_ID);
-
-    /* Destroy data associated with the window */
-    lpData = GetMainWindowData(hwnd);
+    
     if(NULL != lpData)
+    {
+        /* Disable Padlocker */
+        PadlockerEnable(&(lpData->pd), FALSE);
+        /* Destroy data associated with the window */
         DestroyMainWndData(lpData);
+    }
+        
     
     /* Remove pointer to non-existing data */
     SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
@@ -355,21 +315,11 @@ static INT_PTR OnControlCommand(
     
     switch(wControlID)
     {
-        case IDC_ENABLE_PADLOCK:
-        case IDC_NUML_ON:
-        case IDC_NUML_OFF:
-        case IDC_PERIOD:
-            if((BN_CLICKED == wNotifCode && IDC_PERIOD != wControlID) ||
-                (EN_CHANGE == wNotifCode && IDC_PERIOD == wControlID))
-            {  
-                ReadFromWnd(hwnd, &(lpData->pd));
-                
-                PadlockerUpdate(&(lpData->pd), hwnd, PADLOCKER_TIMER_ID);
-                return TRUE;
-            }
-            break;
-    case IDOK:
-        return TRUE;
+        case IDC_ENABLE_PADLOCK:        
+            PadlockerEnable(&(lpData->pd),
+                BST_CHECKED == IsDlgButtonChecked(hwnd, IDC_ENABLE_PADLOCK)
+            );
+            return TRUE;
     }
     return FALSE;
 }
@@ -468,25 +418,6 @@ static INT_PTR OnTrayIconNotify(
     return FALSE;
 }
 
-static INT_PTR OnTimer(
-    HWND hwnd,
-    UINT_PTR nIDEvent,
-    TIMERPROC lpTimerFunc
-)
-{
-    LPMAINWNDDATA lpData = GetMainWindowData(hwnd);
-    
-    /* Process padlocker timer */
-    if(PADLOCKER_TIMER_ID == nIDEvent)
-    {
-        PadlockerProcess(&(lpData->pd));
-
-        return TRUE;
-    }
-    
-    return FALSE;
-}
-
 /**
  * @brief Main window dialog procedure
  * 
@@ -535,9 +466,6 @@ static INT_PTR CALLBACK DialogProc(
 
     case WM_TRAY_ICON:
         return (INT_PTR)OnTrayIconNotify(hwnd, wParam, (UINT)lParam);
-
-    case WM_TIMER:
-        return (INT_PTR)OnTimer(hwnd, (UINT_PTR)wParam, (TIMERPROC)lParam);
     }
     
     return FALSE;

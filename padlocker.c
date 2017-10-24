@@ -1,6 +1,40 @@
 #include "padlocker.h"
 
 /******************************************************************************/
+/*                               Private                                      */
+/******************************************************************************/
+
+/**
+ * @brief Low level keyboard hook routine
+ * 
+ * @param nCode How to process the message
+ * @param wParam Keyboard message identifier
+ * @param lParam Low level keyboard input level information
+ * 
+ * @return Result
+ */
+static LRESULT CALLBACK LowLevelKeyboardProc(
+    int    nCode,
+    WPARAM wParam,
+    LPARAM lParam
+)
+{
+    /* Is it allowed to process the message */
+    if(nCode >= HC_ACTION)
+    {
+        /* Has numlock been pressed */
+        if(VK_NUMLOCK == ((LPKBDLLHOOKSTRUCT)lParam)->vkCode)
+        {
+            /* Block the message */
+            return 1;
+        }
+    }
+
+    /* Forward the message */
+    return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
+/******************************************************************************/
 /*                                Public                                      */
 /******************************************************************************/
 
@@ -9,61 +43,37 @@ VOID PadlockerInit(
     LPPADLOCKDATA lpPD
 )
 {
-    lpPD->bIsEnabled = FALSE;
-    lpPD->uPeriod = 500; /* ms */
-    lpPD->bNumLockIsOn = TRUE;
-    lpPD->hwndReceiver = NULL;
-    lpPD->nIDEvent = 0;
+    lpPD->hKeybHook = NULL;
 }
 
 /******************************************************************************/
-BOOL PadlockerProcess(
-    const LPPADLOCKDATA lpPD
+BOOL PadlockerEnable(
+    LPPADLOCKDATA lpPD,
+    BOOL bEnable
 )
 {
-    /* Check if numlock status */
-    if ((lpPD->bNumLockIsOn ? 0 : 1) == (1 & GetKeyState(VK_NUMLOCK)))
+    if(bEnable)
     {
-        INPUT in[2];
+        /* Install the numlock disable hook */
+        lpPD->hKeybHook = SetWindowsHookEx(
+            WH_KEYBOARD_LL,
+            LowLevelKeyboardProc,
+            NULL,
+            0
+        );
         
-        /* Prepare input performing pressing and releasing the numlock  key */
-        in[0].type = INPUT_KEYBOARD;
-        in[0].ki.wVk = VK_NUMLOCK;
-        in[0].ki.wScan = 0;
-        in[0].ki.dwFlags = 0;
-        in[0].ki.time = 0;
-        in[0].ki.dwExtraInfo = (ULONG_PTR)NULL;
-        in[1] = in[0];
-        in[1].ki.dwFlags |= KEYEVENTF_KEYUP;
-        
-        /* Simulate key press */
-        SendInput(2, in, sizeof(INPUT));
+        return lpPD->hKeybHook != NULL;
     }
-    
-    return TRUE;
-}
-
-/******************************************************************************/
-BOOL PadlockerUpdate(
-    const LPPADLOCKDATA lpPD,
-    HWND hwndReceiver,
-    UINT_PTR nIDEvent
-)
-{
-    if(lpPD->bIsEnabled)
+    else
     {
-        SetTimer(hwndReceiver, nIDEvent, lpPD->uPeriod, NULL);
-
-        /* Store timer info */
-        lpPD->hwndReceiver = hwndReceiver;
-        lpPD->nIDEvent = nIDEvent;
-    }
-    else if (0 != lpPD->nIDEvent)
-    {
-        KillTimer(lpPD->hwndReceiver, lpPD->nIDEvent);
-
-        /* Set timer ID to zero to signify the timer is not running */
-        lpPD->nIDEvent = 0;
+        /* If the hook exists */
+        if(NULL != lpPD->hKeybHook)
+        {
+            /* Unhook it */
+            UnhookWindowsHookEx(lpPD->hKeybHook);
+            /* Remove the hook handle to indicate there is no hook */
+            lpPD->hKeybHook = NULL;
+        }
     }
 
     return TRUE;
