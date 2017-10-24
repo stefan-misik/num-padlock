@@ -139,6 +139,107 @@ static VOID WriteToWnd(
         BST_CHECKED);
 }
 
+/**
+ * @brief Process 'Run at startup' menu selection
+ * 
+ * @param hwnd Main window handle
+ * @return TRUE on success
+ */
+static BOOL OnRunAtStartup(
+    HWND hwnd
+)
+{
+    HMENU hMainMenu;
+    HKEY hKey;
+       
+	/* Open Windows/Run key */
+	if (RegOpenKeyEx(HKEY_CURRENT_USER,
+		TEXT("Software\\Microsoft\\Windows\\CurrentVersion\\Run"), 0,
+		KEY_SET_VALUE | KEY_WOW64_32KEY, &hKey) != 
+		ERROR_SUCCESS)
+	{
+		return FALSE;
+	}
+    
+    /* Get the main menu handle */
+    hMainMenu = GetMenu(hwnd);
+    
+    if (GetMenuState(hMainMenu, IDM_RUNATSTARTUP, MF_BYCOMMAND) &
+        MF_CHECKED)
+    {
+        /* Delete registry value holding filename of VUT Disk Mapper */
+		RegDeleteValue(hKey, lpProjectName);
+        
+        /* Uncheck the menu item */
+        CheckMenuItem(hMainMenu, IDM_RUNATSTARTUP,
+            MF_BYCOMMAND | MF_UNCHECKED);
+    }
+    else
+    {
+        DWORD dwRes;
+        static TCHAR lpExeName[1024];
+
+		/* Get path to current EXE file */
+		dwRes = GetModuleFileName(NULL, lpExeName, 1024);
+
+		/* Return, if filename was nor received correctly */
+		if (dwRes == 0 && dwRes >= 1024)
+		{
+            RegCloseKey(hKey);
+			return FALSE;
+		}	
+		
+		/* Ty to write filename of current executable to registry */
+		if (ERROR_SUCCESS != RegSetValueEx(hKey, lpProjectName, 0,
+			REG_SZ, (LPBYTE)lpExeName, (dwRes + 1) * sizeof(TCHAR)))
+		{
+			RegCloseKey(hKey);			
+			return FALSE;
+		}
+        
+        /* Check the menu item */
+        CheckMenuItem(hMainMenu, IDM_RUNATSTARTUP,
+            MF_BYCOMMAND | MF_CHECKED);
+    }
+    
+    /* Close all registry keys */
+	RegCloseKey(hKey);
+    return TRUE;
+}
+
+/**
+ * @brief Check if application is registered to run at startup
+ * 
+ * @return TRUE if it is
+ */
+static BOOL IsRegisteredToRunAtStartup(
+    VOID
+)
+{
+	HKEY hKey;
+	LONG lRes;
+
+	
+	/* Open Windows/Run key */
+	if (RegOpenKeyEx(HKEY_CURRENT_USER,
+		TEXT("Software\\Microsoft\\Windows\\CurrentVersion\\Run"), 0,
+		KEY_QUERY_VALUE | KEY_WOW64_32KEY, &hKey) != 
+		ERROR_SUCCESS)
+	{		
+		return FALSE;
+	}
+
+	/* Check if specified registry value exists */
+	lRes = RegQueryValueEx(hKey, lpProjectName, NULL,
+		NULL, NULL, NULL);
+
+	/* Close all registry keys */
+	RegCloseKey(hKey);	
+
+	/* If value exists */
+	return ERROR_SUCCESS == lRes;
+}
+
 /******************************************************************************/
 /*                         Windows Messages                                   */
 /******************************************************************************/
@@ -158,6 +259,7 @@ static BOOL OnInitDialog(
 )
 {
     LPMAINWNDDATA lpData = (LPMAINWNDDATA)lpAdditionalData;
+    HMENU hMainMenu;
     
     /* Store Pointer to the data structure with the window */
     SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)lpData);
@@ -168,6 +270,15 @@ static BOOL OnInitDialog(
 
     /* Add tray icon */
     TrayIconAdd(hwnd, TRAY_ICON_ID, WM_TRAY_ICON, lpData->hMainIcon);
+    
+    /* Check or uncheck the 'Run at startup' menu item */
+    hMainMenu = GetMenu(hwnd);
+    if(NULL != hMainMenu)
+    {
+        CheckMenuItem(hMainMenu, IDM_RUNATSTARTUP,
+            MF_BYCOMMAND | (IsRegisteredToRunAtStartup()? MF_CHECKED :
+                MF_UNCHECKED));
+    }
     
     /* Update dialog controls */
     WriteToWnd(hwnd, &(lpData->pd));
@@ -280,6 +391,11 @@ static INT_PTR OnMenuAccCommand(
 {
     switch(wID)
     {
+        case IDM_RUNATSTARTUP:
+            if(bIsMenu)
+                OnRunAtStartup(hwnd);
+            return TRUE;
+
         case IDM_EXIT:
             DestroyWindow(hwnd);
             return TRUE;
