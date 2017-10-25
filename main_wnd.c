@@ -464,6 +464,17 @@ static INT_PTR OnTrayIconNotify(
     return FALSE;
 }
 
+const INT_PTR OnInjectNumlock(
+    HWND hwnd
+)
+{
+    /* Inject numlock key press */
+    keybd_event(VK_NUMLOCK, 0, 0, 0);
+    keybd_event(VK_NUMLOCK, 0, KEYEVENTF_KEYUP, 0);
+
+    return TRUE;
+}
+
 /**
  * @brief Main window dialog procedure
  * 
@@ -484,34 +495,37 @@ static INT_PTR CALLBACK DialogProc(
     switch(uMsg)
     {
     case WM_INITDIALOG:
-        return (INT_PTR)OnInitDialog(hwnd, (HWND)wParam, (LPVOID)lParam);
+        return OnInitDialog(hwnd, (HWND)wParam, (LPVOID)lParam);
             
     case WM_COMMAND:
         /* Control command */
         if(0 != lParam)
         {
-            return (INT_PTR)OnControlCommand(hwnd, HIWORD(wParam),
+            return OnControlCommand(hwnd, HIWORD(wParam),
                     LOWORD(wParam), (HWND)lParam);
         }
         /* Menu or accelerator command */
         else
         {
-            return (INT_PTR)OnMenuAccCommand(hwnd, LOWORD(wParam),
+            return OnMenuAccCommand(hwnd, LOWORD(wParam),
                     (HIWORD(wParam) == 0));
         }
 
     case WM_SYSCOMMAND:
-        return (INT_PTR)OnSysCommand(hwnd, wParam, GET_X_LPARAM(lParam),
+        return OnSysCommand(hwnd, wParam, GET_X_LPARAM(lParam),
             GET_Y_LPARAM(lParam));
 
     case WM_CLOSE:
-        return (INT_PTR)OnClose(hwnd);
+        return OnClose(hwnd);
 
     case WM_DESTROY:
-        return (INT_PTR)OnDestroy(hwnd);
+        return OnDestroy(hwnd);
 
     case WM_TRAY_ICON:
-        return (INT_PTR)OnTrayIconNotify(hwnd, wParam, (UINT)lParam);
+        return OnTrayIconNotify(hwnd, wParam, (UINT)lParam);
+
+    case WM_INJECT_NUMLOCK:
+        return OnInjectNumlock(hwnd);
     }
     
     return FALSE;

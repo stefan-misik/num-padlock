@@ -3,6 +3,8 @@
 
 #include "win_common.h"
 
+#define WM_INJECT_NUMLOCK (WM_USER + 1)
+
 /**
  * @brief The handle to the main window
  * 

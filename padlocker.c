@@ -1,4 +1,5 @@
 #include "padlocker.h"
+#include "main_wnd.h"
 
 /******************************************************************************/
 /*                               Private                                      */
@@ -23,10 +24,13 @@ static LRESULT CALLBACK LowLevelKeyboardProc(
     if(nCode >= HC_ACTION)
     {
         /* Has numlock been pressed */
-        if(VK_NUMLOCK == ((LPKBDLLHOOKSTRUCT)lParam)->vkCode)
+        if(VK_NUMLOCK == ((LPKBDLLHOOKSTRUCT)lParam)->vkCode &&
+            WM_KEYUP == wParam &&
+            !(LLKHF_INJECTED & ((LPKBDLLHOOKSTRUCT)lParam)->flags)
+        )
         {
-            /* Block the message */
-            return 1;
+            /* Inform Main window */
+            PostMessage(g_hMainWnd, WM_INJECT_NUMLOCK, 0, 0);
         }
     }
 
