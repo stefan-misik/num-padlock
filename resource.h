@@ -31,6 +31,7 @@
 
 #define IDR_TRAY_MENU                   41000
     #define IDM_SHOWHIDE                    41001
+    #define IDM_ENABLE_PADLOCK              41002
 
 
 #endif /* RESOURCE_H */

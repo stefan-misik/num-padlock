@@ -111,9 +111,11 @@ IDR_TRAY_MENU MENU
 BEGIN
     POPUP ""
     BEGIN
-        MENUITEM "&Show / Hide",IDM_SHOWHIDE
+        MENUITEM "&Show / Hide",    IDM_SHOWHIDE
+        MENUITEM "&Enable",         IDM_ENABLE_PADLOCK
+        MENUITEM "R&un at Startup", IDM_RUNATSTARTUP
         MENUITEM SEPARATOR
-        MENUITEM "&About",      IDM_ABOUT
-        MENUITEM "E&xit",       IDM_EXIT
+        MENUITEM "&About",          IDM_ABOUT
+        MENUITEM "E&xit",           IDM_EXIT
     END
 END

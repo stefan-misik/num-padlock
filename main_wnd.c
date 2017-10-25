@@ -16,6 +16,8 @@ typedef struct tagMAINWNDDATA
 {
     HICON hMainIcon;        /** < Main Icon handle */    
     HMENU hTrayIconMenu;    /** < Menu for the tray icon */
+    BOOL bIsEnabled;        /** < Is padlocker enabled */
+    BOOL bOnStartup;        /** < Is being run on startup */
     PADLOCKDATA pd;         /** < Num-padlock data */
 } MAINWNDDATA, *LPMAINWNDDATA;
 
@@ -89,6 +91,8 @@ static LPMAINWNDDATA CreateMainWndData(VOID)
     /* Initialize main window data */
     lpData->hMainIcon = NULL;
     lpData->hTrayIconMenu = NULL;
+    lpData->bIsEnabled = FALSE;
+    lpData->bOnStartup = FALSE;
     /* Initialize padlocker data */
     PadlockerInit(&(lpData->pd));
         
@@ -99,15 +103,21 @@ static LPMAINWNDDATA CreateMainWndData(VOID)
  * @brief Process 'Run at startup' menu selection
  * 
  * @param hwnd Main window handle
+ * @param bOnStartup Run on startup
+ * 
  * @return TRUE on success
  */
 static BOOL OnRunAtStartup(
-    HWND hwnd
+    HWND hwnd,
+    BOOL bOnStartup
 )
 {
-    HMENU hMainMenu;
+    LPMAINWNDDATA lpData;
     HKEY hKey;
-       
+
+    /* Get main window data */
+    lpData = GetMainWindowData(hwnd);
+
 	/* Open Windows/Run key */
 	if (RegOpenKeyEx(HKEY_CURRENT_USER,
 		TEXT("Software\\Microsoft\\Windows\\CurrentVersion\\Run"), 0,
@@ -117,20 +127,7 @@ static BOOL OnRunAtStartup(
 		return FALSE;
 	}
     
-    /* Get the main menu handle */
-    hMainMenu = GetMenu(hwnd);
-    
-    if (GetMenuState(hMainMenu, IDM_RUNATSTARTUP, MF_BYCOMMAND) &
-        MF_CHECKED)
-    {
-        /* Delete registry value holding filename of VUT Disk Mapper */
-		RegDeleteValue(hKey, lpProjectName);
-        
-        /* Uncheck the menu item */
-        CheckMenuItem(hMainMenu, IDM_RUNATSTARTUP,
-            MF_BYCOMMAND | MF_UNCHECKED);
-    }
-    else
+    if (bOnStartup)
     {
         DWORD dwRes;
         static TCHAR lpExeName[1024];
@@ -152,12 +149,22 @@ static BOOL OnRunAtStartup(
 			RegCloseKey(hKey);			
 			return FALSE;
 		}
-        
-        /* Check the menu item */
-        CheckMenuItem(hMainMenu, IDM_RUNATSTARTUP,
-            MF_BYCOMMAND | MF_CHECKED);
+    }
+    else
+    {
+        /* Delete registry value holding filename of VUT Disk Mapper */
+		RegDeleteValue(hKey, lpProjectName);
     }
     
+    /* Check or uncheck the menu item */
+    CheckMenuItem(GetMenu(hwnd), IDM_RUNATSTARTUP,
+        MF_BYCOMMAND | (bOnStartup ? MF_CHECKED : MF_UNCHECKED));
+    CheckMenuItem(lpData->hTrayIconMenu, IDM_RUNATSTARTUP,
+        MF_BYCOMMAND | (bOnStartup ? MF_CHECKED : MF_UNCHECKED));
+
+    /* Remember the settings */
+    lpData->bOnStartup = bOnStartup;
+
     /* Close all registry keys */
 	RegCloseKey(hKey);
     return TRUE;
@@ -166,15 +173,18 @@ static BOOL OnRunAtStartup(
 /**
  * @brief Check if application is registered to run at startup
  * 
- * @return TRUE if it is
+ * @param hwnd Main window handle
  */
-static BOOL IsRegisteredToRunAtStartup(
-    VOID
+static VOID IsRegisteredToRunAtStartup(
+    HWND hwnd
 )
 {
+    LPMAINWNDDATA lpData;
 	HKEY hKey;
 	LONG lRes;
 
+    /* Get main window data */
+    lpData = GetMainWindowData(hwnd);
 	
 	/* Open Windows/Run key */
 	if (RegOpenKeyEx(HKEY_CURRENT_USER,
@@ -182,7 +192,7 @@ static BOOL IsRegisteredToRunAtStartup(
 		KEY_QUERY_VALUE | KEY_WOW64_32KEY, &hKey) != 
 		ERROR_SUCCESS)
 	{		
-		return FALSE;
+		return;
 	}
 
 	/* Check if specified registry value exists */
@@ -193,7 +203,48 @@ static BOOL IsRegisteredToRunAtStartup(
 	RegCloseKey(hKey);	
 
 	/* If value exists */
-	return ERROR_SUCCESS == lRes;
+	lpData->bOnStartup = (ERROR_SUCCESS == lRes);
+    
+    /* Check or uncheck the menu item */
+    CheckMenuItem(GetMenu(hwnd), IDM_RUNATSTARTUP,
+        MF_BYCOMMAND | ((lpData->bOnStartup) ? MF_CHECKED : MF_UNCHECKED));
+    CheckMenuItem(lpData->hTrayIconMenu, IDM_RUNATSTARTUP,
+        MF_BYCOMMAND | ((lpData->bOnStartup) ? MF_CHECKED : MF_UNCHECKED));
+}
+
+/**
+ * @brief Enable or disable padlocker and mark all ticks correctly
+ * 
+ * @param hwnd Main window handle
+ * @param bEnable TRUE to enable
+ * 
+ * @return TRUE on success
+ */
+static BOOL MainWndEnableLocker(
+    HWND hwnd,
+    BOOL bEnable
+)
+{
+    BOOL bSuccess;
+    LPMAINWNDDATA lpData = GetMainWindowData(hwnd);
+    
+    /* Enable or disable padlocker */
+    bSuccess = PadlockerEnable(&(lpData->pd), bEnable);
+    
+    if(bSuccess)
+    {
+        /* Store current status */
+        lpData->bIsEnabled = bEnable;
+        
+        /* Set main window enable tick */
+        CheckDlgButton(hwnd, IDC_ENABLE_PADLOCK, bEnable ? BST_CHECKED :
+            BST_UNCHECKED);
+        /* Set tray menu tick */
+        CheckMenuItem(lpData->hTrayIconMenu, IDM_ENABLE_PADLOCK,
+            MF_BYCOMMAND | (bEnable ? MF_CHECKED : MF_UNCHECKED));
+    }
+    
+    return bSuccess;
 }
 
 /******************************************************************************/
@@ -215,7 +266,6 @@ static BOOL OnInitDialog(
 )
 {
     LPMAINWNDDATA lpData = (LPMAINWNDDATA)lpAdditionalData;
-    HMENU hMainMenu;
     
     /* Store Pointer to the data structure with the window */
     SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)lpData);
@@ -228,17 +278,10 @@ static BOOL OnInitDialog(
     TrayIconAdd(hwnd, TRAY_ICON_ID, WM_TRAY_ICON, lpData->hMainIcon);
     
     /* Check or uncheck the 'Run at startup' menu item */
-    hMainMenu = GetMenu(hwnd);
-    if(NULL != hMainMenu)
-    {
-        CheckMenuItem(hMainMenu, IDM_RUNATSTARTUP,
-            MF_BYCOMMAND | (IsRegisteredToRunAtStartup()? MF_CHECKED :
-                MF_UNCHECKED));
-    }
+    IsRegisteredToRunAtStartup(hwnd);
     
     /* Enable the Padlocker by default */
-    CheckDlgButton(hwnd, IDC_ENABLE_PADLOCK, BST_CHECKED);
-    PadlockerEnable(&(lpData->pd), TRUE);
+    MainWndEnableLocker(hwnd, TRUE);
     
     return TRUE;
 }
@@ -311,14 +354,11 @@ static INT_PTR OnControlCommand(
     HWND hwndC
 )
 {
-    LPMAINWNDDATA lpData = GetMainWindowData(hwnd);
-    
     switch(wControlID)
     {
-        case IDC_ENABLE_PADLOCK:        
-            PadlockerEnable(&(lpData->pd),
-                BST_CHECKED == IsDlgButtonChecked(hwnd, IDC_ENABLE_PADLOCK)
-            );
+        case IDC_ENABLE_PADLOCK:
+            MainWndEnableLocker(hwnd,
+                BST_CHECKED == IsDlgButtonChecked(hwnd, IDC_ENABLE_PADLOCK));
             return TRUE;
     }
     return FALSE;
@@ -339,11 +379,17 @@ static INT_PTR OnMenuAccCommand(
     BOOL bIsMenu
 )
 {
+    LPMAINWNDDATA lpData = GetMainWindowData(hwnd);
+    
     switch(wID)
     {
         case IDM_RUNATSTARTUP:
             if(bIsMenu)
-                OnRunAtStartup(hwnd);
+                OnRunAtStartup(hwnd, !(lpData->bOnStartup));
+            return TRUE;
+        
+        case IDM_ENABLE_PADLOCK:
+            MainWndEnableLocker(hwnd, !(lpData->bIsEnabled));
             return TRUE;
 
         case IDM_EXIT:
@@ -534,7 +580,7 @@ BOOL CreateMainWindow(
         return FALSE;
     }
 
-    /* Draw Window */
-    ShowWindow(g_hMainWnd, nCmdShow);
+    /* Hide the window by default */
+    ShowMainWnd(g_hMainWnd, FALSE);
     return TRUE;
 }
