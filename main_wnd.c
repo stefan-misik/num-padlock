@@ -69,6 +69,9 @@ static VOID DestroyMainWndData(
             DestroyIcon(lpData->hMainIcon);
         if(NULL != lpData->hTrayIconMenu)
             DestroyMenu(lpData->hTrayIconMenu);
+        
+        /* Disable padlocker */
+        PadlockerEnable(&(lpData->pd), FALSE);
 
         HeapFree(g_hHeap, 0, lpData);
     }
@@ -217,34 +220,73 @@ static VOID IsRegisteredToRunAtStartup(
  * 
  * @param hwnd Main window handle
  * @param bEnable TRUE to enable
- * 
- * @return TRUE on success
  */
-static BOOL MainWndEnableLocker(
+static VOID MainWndEnableLocker(
     HWND hwnd,
     BOOL bEnable
 )
 {
-    BOOL bSuccess;
     LPMAINWNDDATA lpData = GetMainWindowData(hwnd);
+   
+    /* Store current status */
+    lpData->bIsEnabled = bEnable;
+
+    /* Set main window enable tick */
+    CheckDlgButton(hwnd, IDC_ENABLE_PADLOCK, bEnable ? BST_CHECKED :
+        BST_UNCHECKED);
+    /* Set tray menu tick */
+    CheckMenuItem(lpData->hTrayIconMenu, IDM_ENABLE_PADLOCK,
+        MF_BYCOMMAND | (bEnable ? MF_CHECKED : MF_UNCHECKED));
+}
+
+/**
+ * @brief Inject the numlock key press and release
+ * 
+ */
+static VOID InjectNumlock(
+    VOID
+)
+{
+    keybd_event(VK_NUMLOCK, 0, 0, 0);
+    keybd_event(VK_NUMLOCK, 0, KEYEVENTF_KEYUP, 0);
+}
+
+/**
+ * @brief Update main window radio buttons to reflect the current numlock status
+ * 
+ * @param hwnd Main window handle
+ */
+static VOID UpdateNumlockStatus(
+    HWND hwnd
+)
+{
+    BOOL bNumlIsOn;
     
-    /* Enable or disable padlocker */
-    bSuccess = PadlockerEnable(&(lpData->pd), bEnable);
+    /* Get the numlock status */
+    bNumlIsOn = (1 & GetKeyState(VK_NUMLOCK)) != 0;
     
-    if(bSuccess)
+    /* Check or uncheck the ON radio-button*/
+    CheckDlgButton(hwnd, IDC_NUML_ON,
+        bNumlIsOn ? BST_CHECKED : BST_UNCHECKED);
+    /* Check or uncheck the OFF radio-button*/
+    CheckDlgButton(hwnd, IDC_NUML_OFF,
+        bNumlIsOn ? BST_UNCHECKED : BST_CHECKED);
+}
+
+/**
+ * @brief Set the numlock status according the main window radio buttons
+ * 
+ * @param hwnd Main window handle
+ */
+static VOID SetNumlockStatus(
+    HWND hwnd
+)
+{
+    if((BST_CHECKED == IsDlgButtonChecked(hwnd, IDC_NUML_ON)) !=
+        ((1 & GetKeyState(VK_NUMLOCK)) != 0))
     {
-        /* Store current status */
-        lpData->bIsEnabled = bEnable;
-        
-        /* Set main window enable tick */
-        CheckDlgButton(hwnd, IDC_ENABLE_PADLOCK, bEnable ? BST_CHECKED :
-            BST_UNCHECKED);
-        /* Set tray menu tick */
-        CheckMenuItem(lpData->hTrayIconMenu, IDM_ENABLE_PADLOCK,
-            MF_BYCOMMAND | (bEnable ? MF_CHECKED : MF_UNCHECKED));
+        InjectNumlock();
     }
-    
-    return bSuccess;
 }
 
 /******************************************************************************/
@@ -282,6 +324,9 @@ static BOOL OnInitDialog(
     
     /* Enable the Padlocker by default */
     MainWndEnableLocker(hwnd, TRUE);
+    
+    /* Check the appropriate radio button */
+    UpdateNumlockStatus(hwnd);
     
     return TRUE;
 }
@@ -321,13 +366,10 @@ static INT_PTR OnDestroy(
     
     if(NULL != lpData)
     {
-        /* Disable Padlocker */
-        PadlockerEnable(&(lpData->pd), FALSE);
         /* Destroy data associated with the window */
         DestroyMainWndData(lpData);
     }
-        
-    
+
     /* Remove pointer to non-existing data */
     SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
 
@@ -359,6 +401,11 @@ static INT_PTR OnControlCommand(
         case IDC_ENABLE_PADLOCK:
             MainWndEnableLocker(hwnd,
                 BST_CHECKED == IsDlgButtonChecked(hwnd, IDC_ENABLE_PADLOCK));
+            return TRUE;
+        
+        case IDC_NUML_ON:
+        case IDC_NUML_OFF:
+            SetNumlockStatus(hwnd);
             return TRUE;
     }
     return FALSE;
@@ -441,6 +488,7 @@ static INT_PTR OnSysCommand(
  * @param hwnd Main window handle
  * @param wID Tray Icon ID
  * @param uMsg Mouse or keyboard message associated with the event
+ * 
  * @return TRUE if message is processed
  */
 static INT_PTR OnTrayIconNotify(
@@ -464,13 +512,29 @@ static INT_PTR OnTrayIconNotify(
     return FALSE;
 }
 
-const INT_PTR OnInjectNumlock(
+/**
+ * @brief On numlock being toggled 
+ * 
+ * @param hwnd Main window handle
+ * 
+ * @return TRUE if message is processed
+ */
+const INT_PTR OnNumlockToggled(
     HWND hwnd
 )
 {
-    /* Inject numlock key press */
-    keybd_event(VK_NUMLOCK, 0, 0, 0);
-    keybd_event(VK_NUMLOCK, 0, KEYEVENTF_KEYUP, 0);
+    LPMAINWNDDATA lpData = GetMainWindowData(hwnd);
+    
+    if(lpData->bIsEnabled)
+    {
+        /* Inject numlock key press */
+        InjectNumlock();
+    }
+    else
+    {
+        /* Update the main window radio buttons */
+        UpdateNumlockStatus(hwnd);
+    }
 
     return TRUE;
 }
@@ -524,8 +588,8 @@ static INT_PTR CALLBACK DialogProc(
     case WM_TRAY_ICON:
         return OnTrayIconNotify(hwnd, wParam, (UINT)lParam);
 
-    case WM_INJECT_NUMLOCK:
-        return OnInjectNumlock(hwnd);
+    case WM_NUMLOCK_TOGGLED:
+        return OnNumlockToggled(hwnd);
     }
     
     return FALSE;
@@ -579,6 +643,13 @@ BOOL CreateMainWindow(
     SetMenuDefaultItem(GetSubMenu(lpData->hTrayIconMenu, 0), IDM_SHOWHIDE,
         FALSE);
     
+    /* Enable the padlocker */
+    if(!PadlockerEnable(&(lpData->pd), TRUE))
+    {
+        DestroyMainWndData(lpData);
+        return FALSE;
+    }
+    
     /* Create main Window */
 	g_hMainWnd = CreateDialogParam(
 		g_hInstance,
@@ -591,10 +662,13 @@ BOOL CreateMainWindow(
     /* Check if window was created*/
     if(NULL == g_hMainWnd)
     {
+        DestroyMainWndData(lpData);
         return FALSE;
     }
-
-    /* Hide the window by default */
-    ShowMainWnd(g_hMainWnd, FALSE);
-    return TRUE;
+    else
+    {
+        /* Hide the window by default */
+        ShowMainWnd(g_hMainWnd, FALSE);
+        return TRUE;
+    }
 }

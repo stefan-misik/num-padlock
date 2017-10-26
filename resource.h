@@ -10,6 +10,9 @@
 
 #define IDD_MAIN_WND                    1000
     #define IDC_ENABLE_PADLOCK              1001
+    #define IDC_NUML_ON                     1002
+    #define IDC_NUML_OFF                    1003
+
 
 /* Controls */
 #define IDD_ABOUT                       1030

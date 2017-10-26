@@ -42,7 +42,7 @@ BEGIN
 END
 
 /******************************************************************************/
-IDD_MAIN_WND DIALOGEX 0,0,100,24
+IDD_MAIN_WND DIALOGEX 0,0,100,59
 STYLE   DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_OVERLAPPED | WS_VISIBLE |
     WS_CAPTION | WS_SYSMENU 
 EXSTYLE WS_EX_APPWINDOW
@@ -53,6 +53,12 @@ BEGIN
     
     CONTROL         "Enable",IDC_ENABLE_PADLOCK,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,7,7,70,10
+
+    GROUPBOX        "Keep numlock",IDC_STATIC,7,24,86,28
+    CONTROL         "On",IDC_NUML_ON,"Button",
+                    BS_AUTORADIOBUTTON | WS_TABSTOP | WS_GROUP,13,35,20,10
+    CONTROL         "Off",IDC_NUML_OFF,"Button",
+                    BS_AUTORADIOBUTTON | WS_TABSTOP,50,35,20,10
 END
 
 /******************************************************************************/

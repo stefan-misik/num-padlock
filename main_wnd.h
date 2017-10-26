@@ -3,7 +3,8 @@
 
 #include "win_common.h"
 
-#define WM_INJECT_NUMLOCK (WM_USER + 1)
+/* Message sent to the main window to inform it of numlock being toggled */
+#define WM_NUMLOCK_TOGGLED (WM_USER + 1)
 
 /**
  * @brief The handle to the main window

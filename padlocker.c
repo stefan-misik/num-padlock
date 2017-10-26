@@ -23,14 +23,14 @@ static LRESULT CALLBACK LowLevelKeyboardProc(
     /* Is it allowed to process the message */
     if(nCode >= HC_ACTION)
     {
-        /* Has numlock been pressed */
+        /* Has numlock been released and not injected */
         if(VK_NUMLOCK == ((LPKBDLLHOOKSTRUCT)lParam)->vkCode &&
             WM_KEYUP == wParam &&
             !(LLKHF_INJECTED & ((LPKBDLLHOOKSTRUCT)lParam)->flags)
         )
         {
             /* Inform Main window */
-            PostMessage(g_hMainWnd, WM_INJECT_NUMLOCK, 0, 0);
+            PostMessage(g_hMainWnd, WM_NUMLOCK_TOGGLED, 0, 0);
         }
     }
 
@@ -58,7 +58,7 @@ BOOL PadlockerEnable(
 {
     if(bEnable)
     {
-        /* Install the numlock disable hook */
+        /* Install the numlock hook */
         lpPD->hKeybHook = SetWindowsHookEx(
             WH_KEYBOARD_LL,
             LowLevelKeyboardProc,
