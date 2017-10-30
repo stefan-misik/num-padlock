@@ -527,8 +527,8 @@ const INT_PTR OnNumlockToggled(
     
     if(lpData->bIsEnabled)
     {
-        /* Inject numlock key press */
-        InjectNumlock();
+        /* Set numlock status to desired value */
+        SetNumlockStatus(hwnd);
     }
     else
     {

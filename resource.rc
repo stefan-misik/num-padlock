@@ -125,3 +125,9 @@ BEGIN
         MENUITEM "E&xit",           IDM_EXIT
     END
 END
+
+/******************************************************************************/
+STRINGTABLE
+{
+    IDS_MAIN_ERROR,     "Could not create main window."
+} 

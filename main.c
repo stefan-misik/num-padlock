@@ -32,13 +32,27 @@ INT WINAPI wWinMain(
     /* Get Process heap */
     g_hHeap = GetProcessHeap();
 
-    CreateMainWindow(nCmdShow);
+    /* Create the main window */
+    if(!CreateMainWindow(nCmdShow))
+    {
+        LPTSTR lpMsg;
+        
+        /* Load error message */
+        LoadString(g_hInstance, IDS_MAIN_ERROR, (LPTSTR)(&lpMsg), 0);
+        
+        /* Show error message */
+        MessageBox(NULL, lpMsg, TEXT(PROJECT_NAME), MB_OK | MB_ICONHAND);
+        return 1;
+    }
     
 	/* Enter the message loop */
-	while (GetMessage(&msg, NULL, 0, 0) > 0)
+	while(GetMessage(&msg, NULL, 0, 0) > 0)
 	{
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        if(FALSE == IsDialogMessage(g_hMainWnd, &msg))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
     }
 
 	ExitProcess((UINT)(msg.wParam));
